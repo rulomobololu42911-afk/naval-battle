@@ -754,7 +754,7 @@
             document.querySelectorAll('.start-screen, .bet-screen, .setup-screen, .game-screen').forEach(screen => {
                 screen.style.display = 'none';
             });
-            document.getElementById(screenId).style.display = screenId === 'startScreen' ? 'flex' : 'block';
+            document.getElementById(screenId).style.display = screenId === 'startScreen' || screenId === 'betScreen' ? 'flex' : 'block';
             currentScreen = screenId;
         }
 
@@ -997,10 +997,11 @@
             playerShots[row][col] = hit ? 2 : 1;
             if (hit) {
                 gameStats.hits++;
-                gameStats.enemyShipsAlive--;
+                
                 // Проверяем, потоплен ли корабль
                 const sunkShip = checkSunkShip(row, col, enemyShipCells, playerShots);
                 if (sunkShip) {
+                    gameStats.enemyShipsAlive--;
                     markSurroundingCells(sunkShip, playerShots);
                     updateGameStatus('💥 Корабль потоплен! Продолжайте стрельбу');
                 } else {
@@ -1028,12 +1029,20 @@
 
             if (aiMode === 'hunt' && aiTarget.length > 0) {
                 // Режим охоты: берем следующую цель из очереди
-                const target = aiTarget.shift();
-                row = target.r;
-                col = target.c;
-            } else {
+                let target = aiTarget.shift();
+                while (target && enemyShots[target.r][target.c] !== 0) {
+                    target = aiTarget.shift();
+                }
+                if (target) {
+                    row = target.r;
+                    col = target.c;
+                } else {
+                    aiMode = 'search';
+                }
+            }
+            
+            if (aiMode === 'search') {
                 // Режим поиска: стреляем случайно
-                aiMode = 'search';
                 do {
                     row = Math.floor(Math.random() * 8);
                     col = Math.floor(Math.random() * 8);
@@ -1053,6 +1062,7 @@
                     aiMode = 'search';
                     aiTarget = [];
                     gameStats.playerShipsAlive--;
+                    markSurroundingCells(sunkShip, enemyShots);
                     updateGameStatus('🔥 Противник потопил ваш корабль!');
                     if (gameStats.playerShipsAlive === 0) {
                         endGame('lose');
@@ -1126,8 +1136,8 @@
             
             const cells = document.querySelectorAll(`#${boardId} .cell`);
             cells.forEach((cell, index) => {
-                const row = Math.floor(index / 8);
-                const col = index % 8;
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
                 
                 cell.className = 'cell';
                 
@@ -1178,8 +1188,8 @@
         function updateSetupBoard() {
             const cells = document.querySelectorAll('#setupBoard .cell');
             cells.forEach((cell, index) => {
-                const row = Math.floor(index / 8);
-                const col = index % 8;
+                const row = parseInt(cell.dataset.row);
+                const col = parseInt(cell.dataset.col);
                 
                 cell.className = 'cell';
                 if (playerBoard[row][col] > 0) {
@@ -1232,3 +1242,76 @@
             document.querySelectorAll('.ship-btn').forEach(btn => {
                 btn.classList.remove('completed', 'selected');
             });
+            document.querySelector('[data-ship="4"]').classList.add('selected');
+            document.getElementById('startBattleBtn').disabled = true;
+            document.getElementById('orientationText').textContent = 'Горизонтально';
+        }
+
+        function resetPlayerBoard() {
+            playerBoard = Array(8).fill().map(() => Array(8).fill(0));
+            playerShipCells = [];
+        }
+
+        // Завершение игры
+        function endGame(result) {
+            gamePhase = 'ended';
+            const modal = document.getElementById('resultModal');
+            const title = document.getElementById('resultTitle');
+            const text = document.getElementById('resultText');
+            const reward = document.getElementById('resultReward');
+            if (result === 'win') {
+                title.textContent = '🏆 Победа!';
+                title.className = 'result-title win';
+                text.textContent = 'Поздравляем! Вы потопили весь вражеский флот!';
+                
+                const winnings = selectedBet * 2;
+                playerBalance += winnings;
+                reward.textContent = `+${winnings.toLocaleString()} 🍬`;
+            } else {
+                title.textContent = '💥 Поражение';
+                title.className = 'result-title lose';
+                text.textContent = 'Ваш флот уничтожен! Тренируйтесь и возвращайтесь!';
+                
+                playerBalance -= selectedBet;
+                reward.textContent = `-${selectedBet.toLocaleString()} 🍬`;
+            }
+            
+            updateBalance();
+            modal.style.display = 'flex';
+        }
+
+        function surrenderGame() {
+            if (confirm('Вы действительно хотите сдаться?')) {
+                endGame('lose');
+            }
+        }
+
+        // Новая игра
+        function newGame() {
+            document.getElementById('resultModal').style.display = 'none';
+            showScreen('betScreen');
+            resetGame();
+        }
+
+        function resetGame() {
+            gamePhase = 'setup';
+            currentPlayer = 'player';
+            gameStats = {shots: 0, hits: 0, playerShipsAlive: 10, enemyShipsAlive: 10};
+            playerShots = Array(8).fill().map(() => Array(8).fill(0));
+            enemyShots = Array(8).fill().map(() => Array(8).fill(0));
+            resetShipPlacement();
+        }
+
+        function updateBalance() {
+            document.getElementById('balanceAmount').textContent = `${playerBalance.toLocaleString()} 🍬`;
+            document.getElementById('betBalanceAmount').textContent = `${playerBalance.toLocaleString()} 🍬`;
+            saveBalance();
+        }
+
+        // Инициализация при загрузке
+        window.addEventListener('load', () => {
+            initGame();
+        });
+    </script>
+</body>
+</html>
